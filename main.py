@@ -28,7 +28,7 @@ async def init_db():
             )
         """)
 
-asyncio.run(init_db())
+init_db()
 
 @mcp.tool()
 async def add_expense(date, amount, category, subcategory="", note=""):

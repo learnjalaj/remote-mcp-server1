@@ -13,7 +13,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = DATA_DIR / "expenses.db"
 
-mcp = FastMCP("ExpenseTracker")
+mcp = FastMCP("ExpenseTracker", port=6280)
 
 async def init_db():
     with sqlite3.connect(DB_PATH) as c:

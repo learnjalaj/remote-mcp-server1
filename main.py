@@ -1,47 +1,61 @@
 import os
-import random
-import json
+import sqlite3
+from pathlib import Path
 from fastmcp import FastMCP
 
-mcp = FastMCP("Simple Calculator Server")
+# -----------------------------
+# Writable database location
+# -----------------------------
+DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "expense_tracker"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-#Tool: add two numbers
-@mcp.tool()
-def add(a:int,b:int)->int:
-    """
-    Add two numbers together.
-    args:
-    a: First number
-    b: second number
-    returns:
-    sum of a and b
-    """
-    return a+b
-    
-#Tool: generate a random number
-@mcp.tool()
-def random_num(min_val:int=1,max_val:int=100)->int:
-    """
-    Generate a random number within a range.
-    args:
-    min_val: Minimum value (default = 1)
-    max_val: Maximum value (default = 100)
-    returns:
-    A random number between min_val and max_val
-    """
-    return random.randint(min_val,max_val)
+DB_PATH = DATA_DIR / "expenses.db"
 
-@mcp.resource("info://server")
-def server_invo()->str:
-    """Get information about the server"""
-    info = {
-        "name":"Simple Calculator Service",
-        "version":"1.0.0",
-        "description":"A basic MCP server with math tools",
-        "tools":["add","random_number"],
-        "author":"Jalaj"
-    }
-    return json.dumps(info,indent=2)
+mcp = FastMCP("ExpenseTracker")
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS expenses(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                category TEXT NOT NULL,
+                subcategory TEXT DEFAULT '',
+                note TEXT DEFAULT ''
+            )
+        """)
+
+init_db()
+
+@mcp.tool()
+def add_expense(date, amount, category, subcategory="", note=""):
+    """Add an expense entry into the database"""
+    with sqlite3.connect(DB_PATH) as c:
+        cur = c.execute(
+            """
+            INSERT INTO expenses(date, amount, category, subcategory, note)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (date, amount, category, subcategory, note),
+        )
+        return {"status": "ok", "id": cur.lastrowid}
+
+@mcp.tool()
+def list_expenses(start_date, end_date):
+    """List all expense entries from the database"""
+    with sqlite3.connect(DB_PATH) as c:
+        cur = c.execute(
+            """
+            SELECT id, date, amount, category, subcategory, note
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+            ORDER BY id ASC
+            """,
+            (start_date, end_date),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 if __name__ == "__main__":
-    mcp.run(transport="http",host="0.0.0.0",port=8000)
+    mcp.run()

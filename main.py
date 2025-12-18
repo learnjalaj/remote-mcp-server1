@@ -16,8 +16,8 @@ DB_PATH = DATA_DIR / "expenses.db"
 mcp = FastMCP("ExpenseTracker", port=6280)
 
 async def init_db():
-    with sqlite3.connect(DB_PATH) as c:
-        c.execute("""
+    async with aiosqlite.connect(DB_PATH) as c:
+        await c.execute("""
             CREATE TABLE IF NOT EXISTS expenses(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
@@ -27,27 +27,32 @@ async def init_db():
                 note TEXT DEFAULT ''
             )
         """)
+        await c.commit()
 
-init_db()
+# Schedule DB initialization at startup
+@mcp.on_startup
+async def startup():
+    await init_db()
 
 @mcp.tool()
 async def add_expense(date, amount, category, subcategory="", note=""):
     """Add an expense entry into the database"""
-    with sqlite3.connect(DB_PATH) as c:
-        cur = c.execute(
+    async with aiosqlite.connect(DB_PATH) as c:
+        cur = await c.execute(
             """
             INSERT INTO expenses(date, amount, category, subcategory, note)
             VALUES (?, ?, ?, ?, ?)
             """,
             (date, amount, category, subcategory, note),
         )
+        await c.commit()
         return {"status": "ok", "id": cur.lastrowid}
 
 @mcp.tool()
 async def list_expenses(start_date, end_date):
     """List all expense entries from the database"""
-    with sqlite3.connect(DB_PATH) as c:
-        cur = c.execute(
+    async with aiosqlite.connect(DB_PATH) as c:
+        cur = await c.execute(
             """
             SELECT id, date, amount, category, subcategory, note
             FROM expenses
@@ -56,8 +61,9 @@ async def list_expenses(start_date, end_date):
             """,
             (start_date, end_date),
         )
+        rows = await cur.fetchall()
         cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        return [dict(zip(cols, r)) for r in rows]
 
 if __name__ == "__main__":
     mcp.run()

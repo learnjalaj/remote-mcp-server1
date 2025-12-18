@@ -1,6 +1,5 @@
 import os
 import aiosqlite
-import tempfile
 import asyncio
 from pathlib import Path
 from fastmcp import FastMCP
@@ -12,12 +11,19 @@ DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = DATA_DIR / "expenses.db"
+print("Using database at:", DB_PATH)  # Confirm path at startup
 
+# -----------------------------
+# MCP server
+# -----------------------------
 mcp = FastMCP("ExpenseTracker", port=6280)
 
+# -----------------------------
+# Async DB initialization
+# -----------------------------
 async def init_db():
-    async with aiosqlite.connect(DB_PATH) as c:
-        await c.execute("""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS expenses(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
@@ -27,40 +33,54 @@ async def init_db():
                 note TEXT DEFAULT ''
             )
         """)
-        await c.commit()
+        await db.commit()
+    print("Database initialized successfully.")
 
+# -----------------------------
+# MCP tools
+# -----------------------------
 @mcp.tool()
 async def add_expense(date, amount, category, subcategory="", note=""):
-    """Add an expense entry into the database"""
-    async with aiosqlite.connect(DB_PATH) as c:
-        cur = await c.execute(
+    """
+    Add an expense entry into the database.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
             """
             INSERT INTO expenses(date, amount, category, subcategory, note)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (date, amount, category, subcategory, note),
+            (date, amount, category, subcategory, note)
         )
-        await c.commit()
-        return {"status": "ok", "id": cur.lastrowid}
+        await db.commit()
+        return {"status": "ok", "id": cursor.lastrowid}
 
 @mcp.tool()
 async def list_expenses(start_date, end_date):
-    """List all expense entries from the database"""
-    async with aiosqlite.connect(DB_PATH) as c:
-        cur = await c.execute(
+    """
+    List all expense entries between start_date and end_date.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
             """
             SELECT id, date, amount, category, subcategory, note
             FROM expenses
             WHERE date BETWEEN ? AND ?
             ORDER BY id ASC
             """,
-            (start_date, end_date),
+            (start_date, end_date)
         )
-        rows = await cur.fetchall()
-        cols = [d[0] for d in cur.description]
+        rows = await cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
         return [dict(zip(cols, r)) for r in rows]
 
+# -----------------------------
+# Run MCP server
+# -----------------------------
 if __name__ == "__main__":
+    # Initialize DB before starting MCP
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_db())
+
+    # Start MCP server
     mcp.run()

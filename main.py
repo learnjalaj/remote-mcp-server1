@@ -1,5 +1,7 @@
 import os
-import sqlite3
+import aiosqlite
+import tempfile
+import asyncio
 from pathlib import Path
 from fastmcp import FastMCP
 
@@ -13,7 +15,7 @@ DB_PATH = DATA_DIR / "expenses.db"
 
 mcp = FastMCP("ExpenseTracker")
 
-def init_db():
+async def init_db():
     with sqlite3.connect(DB_PATH) as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS expenses(
@@ -26,10 +28,10 @@ def init_db():
             )
         """)
 
-init_db()
+asyncio.run(init_db())
 
 @mcp.tool()
-def add_expense(date, amount, category, subcategory="", note=""):
+async def add_expense(date, amount, category, subcategory="", note=""):
     """Add an expense entry into the database"""
     with sqlite3.connect(DB_PATH) as c:
         cur = c.execute(
@@ -42,7 +44,7 @@ def add_expense(date, amount, category, subcategory="", note=""):
         return {"status": "ok", "id": cur.lastrowid}
 
 @mcp.tool()
-def list_expenses(start_date, end_date):
+async def list_expenses(start_date, end_date):
     """List all expense entries from the database"""
     with sqlite3.connect(DB_PATH) as c:
         cur = c.execute(

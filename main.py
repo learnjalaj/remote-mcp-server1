@@ -29,11 +29,6 @@ async def init_db():
         """)
         await c.commit()
 
-# Schedule DB initialization at startup
-@mcp.on_startup
-async def startup():
-    await init_db()
-
 @mcp.tool()
 async def add_expense(date, amount, category, subcategory="", note=""):
     """Add an expense entry into the database"""
@@ -66,4 +61,6 @@ async def list_expenses(start_date, end_date):
         return [dict(zip(cols, r)) for r in rows]
 
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(init_db())
     mcp.run()
